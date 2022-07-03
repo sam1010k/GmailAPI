@@ -3,7 +3,8 @@ import os
 import base64
 from typing import List
 import time
-from GmailAPI.connect_to_gmail import connect_to_gmail
+from connect_to_gmail import connect_to_gmail
+import re
 
 class GmailException(Exception):
     """gmail base exception class"""
@@ -64,23 +65,60 @@ if __name__ == '__main__':
 
     query_string = 'has:attachment'
 
-    save_location = os.getcwd()
-    email_messages = search_emails(query_string, 'UNREAD')
+    # save_location = os.getcwd()
+    base_location = os.path.abspath(os.path.join(os.getcwd(), "..","GMAIL API Output"))
+
+    email_messages = search_emails(query_string, ['UNREAD', 'INBOX'])
 
     for email_message in email_messages:
         messageDetail = get_message_detail(email_message['id'], msg_format='full', metadata_headers=['parts'])
         messageDetailPayload = messageDetail.get('payload')
-        print(f'***{messageDetailPayload}\n***')
-        print(f'\n{messageDetail}')
+
+        # Get some email info
+        msgId = messageDetail['id']
+        msgLabels = messageDetail['labelIds']
+        msgSnip = messageDetail['snippet']
+        msgInternalDate = messageDetail['internalDate']
+
+        if 'headers' in messageDetailPayload:
+            for msgHeader in messageDetailPayload['headers']:
+                if msgHeader['name']=="From":
+                    msgSentFrom = msgHeader['value']
+                if msgHeader['name']=="Date":
+                    msgSentDate = msgHeader['value']
+                if msgHeader['name']=="Subject":
+                    try:
+                        msgSubject = msgHeader['value']
+                        pattern = "Fwd: New Assignment(.*)" # Strip off un-needed text
+                        compiled = re.compile(pattern)
+                        ms = compiled.search(msgSubject)
+                        msgSubject = ms.group(1).strip() 
+                    except:
+                        pass
+
         if 'parts' in messageDetailPayload:
             for msgPayload in messageDetailPayload['parts']:
-                file_name = msgPayload['filename']
+                
+                file_name = msgSubject + '_' + msgPayload['filename']
                 body = msgPayload['body']
+
                 if 'attachmentId' in body:
                     attachment_id = body['attachmentId']
-                    attachment_content = get_file_data(email_message['id'], attachment_id, file_name, save_location)
-
-    with open(os.path.join(save_location, file_name), 'wb') as _f:
-        _f.write(attachment_content)
-        print(f'File {file_name} is saved at {save_location}')
-        time.sleep(0.5)
+                    attachment_content = get_file_data(email_message['id'], attachment_id, file_name, base_location)
+        
+        print(f'ID: {msgId}')
+        print(f'Labels: {msgLabels}')
+        print(f'Snippet: {msgSnip}')
+        print(f'Received by Google Date: {msgInternalDate}')
+        print(f'Message Sent From:  {msgSentFrom}')
+        print(f'Message Sent Date:  {msgSentDate}')
+        print(f'Message Subject:  {msgSubject}')
+        
+        # Create folders based on assignment, messageID, and timestamp/epoch date
+        save_location = os.path.join(base_location, msgSubject + '_' + msgId + '_'+  msgInternalDate)
+        os.mkdir(save_location)
+        
+        with open(os.path.join(save_location, file_name), 'wb') as _f:
+            _f.write(attachment_content)
+            print(f'File {file_name} is saved at {save_location}')
+            time.sleep(0.5)

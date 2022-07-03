@@ -131,3 +131,4 @@ dmypy.json
 # Credentials
 /credentials.json
 /token.json
+/credentials_122.json
